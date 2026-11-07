@@ -1,0 +1,11 @@
+{
+ "Version": "1.104.2-tc3430f0d2-g598b63867",
+ "BackendState": "NeedsLogin",
+ "AuthURL": "https://login.tailscale.com/a/0123456789abcdef",
+ "TailscaleIPs": [
+  "100.101.102.103",
+  "fd7a:115c:a1e0::1"
+ ],
+ "Health": [],
+ "MagicDNSSuffix": "tail1234.ts.net"
+}

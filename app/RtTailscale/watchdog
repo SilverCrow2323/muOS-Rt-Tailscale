@@ -1,0 +1,23 @@
+#!/bin/sh
+# Rt:Tailscale-K :: watchdog. Keeps the daemon, the web panel and the Taildrop receiver alive.
+APP_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+RT="$APP_DIR/rt"
+STUCK=0
+
+while :; do
+	[ "$("$RT" conf get WATCHDOG 1)" = 1 ] || exit 0
+
+	"$RT" ensure >/dev/null 2>&1
+
+	# Stuck in "Starting" with the network up = typical after a pre-Wi-Fi start: a clean restart fixes it
+	case "$("$RT" backend 2>/dev/null)" in
+		Starting | NoState) STUCK=$((STUCK + 1)) ;;
+		*) STUCK=0 ;;
+	esac
+	if [ "$STUCK" -ge 20 ] && ip -4 route show default 2>/dev/null | grep -q .; then
+		"$RT" daemon restart >/dev/null 2>&1
+		STUCK=0
+	fi
+
+	sleep 10
+done

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rt:Tailscale-M // SPDW Factory</title>
+<style>
+:root{--bg:#05080a;--panel:#0a1216;--line:#12312a;--g:#00ff9c;--c:#00e5ff;--r:#ff2a55;--y:#ffd23f;--t:#b8ffe4;--dim:#5f8f80}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--t);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace}
+#rain{position:fixed;inset:0;z-index:0;opacity:.13;pointer-events:none}
+#app{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:14px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px}
+h1{margin:0;font-size:18px;letter-spacing:.12em;color:var(--g);text-shadow:0 0 8px rgba(0,255,156,.5)}
+h1 small{color:var(--c);font-size:11px;letter-spacing:.2em;display:block;text-shadow:none}
+.pill{margin-left:auto;padding:3px 10px;border:1px solid var(--line);border-radius:3px;font-size:12px}
+.pill.ok{color:var(--g);border-color:var(--g)}.pill.bad{color:var(--r);border-color:var(--r)}.pill.mid{color:var(--y);border-color:var(--y)}
+nav{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px}
+nav button{background:transparent;color:var(--dim);border:1px solid var(--line);padding:6px 12px;cursor:pointer;font:inherit;letter-spacing:.08em}
+nav button.on{color:var(--bg);background:var(--g);border-color:var(--g)}
+nav button:hover:not(.on){color:var(--c);border-color:var(--c)}
+.card{background:var(--panel);border:1px solid var(--line);padding:12px 14px;margin-bottom:12px;border-radius:3px}
+.card h2{margin:0 0 8px;font-size:13px;letter-spacing:.18em;color:var(--c);text-transform:uppercase}
+.card h2::before{content:"▓▒░ ";color:var(--g)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:3px 10px}.kv b{color:var(--dim);font-weight:400}
+button.b,a.b{background:transparent;color:var(--g);border:1px solid var(--g);padding:5px 12px;cursor:pointer;font:inherit;border-radius:2px;text-decoration:none;display:inline-block}
+button.b:hover,a.b:hover{background:var(--g);color:var(--bg)}
+button.b.r{color:var(--r);border-color:var(--r)}button.b.r:hover{background:var(--r);color:var(--bg)}
+button.b.c{color:var(--c);border-color:var(--c)}button.b.c:hover{background:var(--c);color:var(--bg)}
+button.b:disabled{opacity:.35;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+input,select,textarea{background:#03090b;color:var(--t);border:1px solid var(--line);padding:6px 8px;font:inherit;border-radius:2px;min-width:0}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--c)}
+input[type=checkbox]{accent-color:var(--g);width:16px;height:16px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:5px 7px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:400;font-size:12px;letter-spacing:.1em}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--r);margin-right:6px}.dot.on{background:var(--g);box-shadow:0 0 6px var(--g)}
+.tag{display:inline-block;border:1px solid var(--c);color:var(--c);font-size:11px;padding:0 5px;margin-right:4px;border-radius:2px}
+.tag.r{border-color:var(--r);color:var(--r)}.tag.y{border-color:var(--y);color:var(--y)}
+pre{background:#03090b;border:1px solid var(--line);padding:8px;overflow:auto;max-height:340px;margin:6px 0;white-space:pre-wrap;word-break:break-word;font-size:12px}
+.tog{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.tog small{display:block;color:var(--dim)}
+.msg{color:var(--y);min-height:18px;margin:4px 0}.err{color:var(--r)}
+.bar{height:6px;background:#03090b;border:1px solid var(--line);margin:4px 0}.bar i{display:block;height:100%;background:var(--c)}
+#login{max-width:340px;margin:12vh auto;text-align:center}
+#login input{width:100%;text-align:center;font-size:22px;letter-spacing:.4em;margin:12px 0}
+.hide{display:none}
+.dim{color:var(--dim)}
+a{color:var(--c)}
+@media(max-width:560px){.kv{grid-template-columns:100px 1fr}th:nth-child(n+4),td:nth-child(n+4){display:none}}
+</style>
+</head>
+<body>
+<canvas id="rain"></canvas>
+<div id="app">
+<div id="login" class="card hide">
+  <h1>Rt:TAILSCALE-M<small>// SPDW FACTORY</small></h1>
+  <p class="dim">The PIN is shown in the app on the device (Web panel & PIN).</p>
+  <input id="pin" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="PIN">
+  <button class="b" id="pinGo" style="width:100%">SIGN IN</button>
+  <div class="msg err" id="pinMsg"></div>
+</div>
+<div id="main" class="hide">
+  <header>
+    <h1>Rt:TAILSCALE-M<small>// SPDW FACTORY :: muOS ANDROMEDA</small></h1>
+    <span class="pill" id="pill">...</span>
+    <button class="b r" id="btnOut">SIGN OUT</button>
+  </header>
+  <nav id="tabs"></nav>
+  <div id="view"></div>
+</div>
+</div>
+<script>
+"use strict";
+const $=(s,el)=>(el||document).querySelector(s);
+function h(tag,attrs){
+  const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs||{})){
+    if(k==="class")e.className=v;
+    else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);
+    else if(k==="value")e.value=v;
+    else if(k==="checked")e.checked=!!v;
+    else if(v===true)e.setAttribute(k,"");
+    else if(v!==false&&v!=null)e.setAttribute(k,v);
+  }
+  for(const c of Array.prototype.slice.call(arguments,2).flat(Infinity)){
+    if(c==null||c===false)continue;
+    e.append(c.nodeType?c:document.createTextNode(String(c)));
+  }
+  return e;
+}
+async function api(path,body,method){
+  const o={method:method||(body===undefined?"GET":"POST"),headers:{"X-Rt":"1"},credentials:"same-origin"};
+  if(body instanceof Blob){o.body=body;}
+  else if(body!==undefined){o.headers["Content-Type"]="application/json";o.body=JSON.stringify(body);}
+  const r=await fetch(path,o);
+  if(r.status===401){showLogin();throw new Error("auth");}
+  return r.json();
+}
+const fmtB=n=>{n=+n||0;const u=["B","KB","MB","GB","TB"];let i=0;while(n>=1024&&i<4){n/=1024;i++}return (i?n.toFixed(1):n)+" "+u[i]};
+const fmtUp=s=>{s=+s||0;const d=Math.floor(s/86400),hh=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+"d ":"")+hh+"h "+m+"m"};
+const ago=t=>{if(!t||t.startsWith("0001"))return "-";const s=(Date.now()-new Date(t).getTime())/1000;if(isNaN(s))return "-";if(s<90)return "now";if(s<5400)return Math.round(s/60)+" min ago";if(s<129600)return Math.round(s/3600)+" h ago";return Math.round(s/86400)+" d ago"};
+const copy=async t=>{try{await navigator.clipboard.writeText(t)}catch(e){const x=h("textarea",{value:t});document.body.append(x);x.select();document.execCommand("copy");x.remove()}};
+
+let S={st:null,sys:null},tab="status",timer=null,msgBox=null;
+const TABS=[["status","STATUS"],["peers","PEERS"],["exit","EXIT NODE"],["settings","SETTINGS"],["drop","TAILDROP"],["serve","SERVE/FUNNEL"],["tools","TOOLS"],["system","SYSTEM"]];
+
+function showLogin(){clearInterval(timer);$("#main").classList.add("hide");$("#login").classList.remove("hide");setTimeout(()=>$("#pin").focus(),50)}
+async function doLogin(){
+  $("#pinMsg").textContent="";
+  const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json","X-Rt":"1"},credentials:"same-origin",body:JSON.stringify({pin:$("#pin").value})});
+  const j=await r.json();
+  if(j.ok){$("#pin").value="";start()}else $("#pinMsg").textContent=j.error||"error";
+}
+$("#pinGo").onclick=doLogin;
+$("#pin").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin()});
+$("#btnOut").onclick=async()=>{await api("/api/logout",{});showLogin()};
+
+function note(t,bad){if(msgBox){msgBox.textContent=t;msgBox.className="msg"+(bad?" err":"")}}
+async function act(fn,okMsg){
+  try{
+    const r=await fn();
+    const out=((r&&(r.out||""))+(r&&r.err?"\n"+r.err:"")).trim();
+    note(r&&(r.ok===false||r.error)?"ERROR: "+(r.error||out||("rc "+r.rc)):(okMsg||out||"ok"),r&&(r.ok===false||!!r.error));
+    await refresh();
+  }catch(e){if(e.message!=="auth")note("ERROR: "+e.message,true)}
+}
+
+function buildTabs(){
+  const t=$("#tabs");t.replaceChildren();
+  for(const [id,label] of TABS)t.append(h("button",{class:id===tab?"on":"",onclick:()=>{tab=id;buildTabs();render()}},label));
+}
+
+async function refresh(){
+  try{
+    S.st=await api("/api/status");
+    const p=$("#pill"),s=S.st.state;
+    const map={Running:["CONNECTED","ok"],Stopped:["DISCONNECTED","bad"],NeedsLogin:["LOGIN REQUIRED","bad"],Daemon:["DAEMON OFF","bad"],Starting:["CONNECTING...","mid"],NoState:["CONNECTING...","mid"],NeedsMachineAuth:["ADMIN APPROVAL","mid"]};
+    const m=map[s]||[s,"mid"];p.textContent=m[0];p.className="pill "+m[1];
+    if(["status","peers","exit","settings","serve","system"].includes(tab)&&!document.activeElement.matches("input,select,textarea"))render();
+  }catch(e){}
+}
+function start(){
+  $("#login").classList.add("hide");$("#main").classList.remove("hide");
+  buildTabs();refresh();render();
+  clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)refresh()},5000);
+}
+
+const V=()=>$("#view");
+function render(){
+  const v=V();const keep=window.scrollY;
+  v.replaceChildren();
+  msgBox=h("div",{class:"msg"});
+  ({status:rStatus,peers:rPeers,exit:rExit,settings:rSettings,drop:rDrop,serve:rServe,tools:rTools,system:rSystem}[tab])(v);
+  v.append(msgBox);window.scrollTo(0,keep);
+}
+
+function kv(rows){const g=h("div",{class:"kv"});for(const [k,val] of rows){if(val===""||val==null)continue;g.append(h("b",{},k),h("span",{},val))}return g}
+const st=()=>S.st||{};
+
+// ---------------------------------------------------------------- STATO ---
+let loginPoll=null;
+function rStatus(v){
+  const s=st(),me=s.self||{};
+  const c1=h("div",{class:"card"},h("h2",{},"Node"));
+  c1.append(kv([["State",s.state],["Tailnet",s.tailnet],["MagicDNS",s.magicDns],["Name",me.name],["FQDN",me.dns],["IP",(me.ips||[]).join("  ")],["OS",me.os],["User",me.user],["Relay",me.relay],["Version",s.version],["Tag",(me.tags||[]).join(", ")]]));
+  if(s.health&&s.health.length)c1.append(h("div",{class:"msg"},"⚠ "+s.health.join(" • ")));
+  const row=h("div",{class:"row"});
+  if(!s.daemon)row.append(h("button",{class:"b",onclick:()=>act(()=>api("/api/daemon",{action:"start"}),"daemon started")},"START DAEMON"));
+  else{
+    if(s.state==="Running")row.append(h("button",{class:"b r",onclick:()=>act(()=>api("/api/down",{}),"disconnected")},"DISCONNECT"));
+    if(s.state==="Stopped"||s.state==="NoState")row.append(h("button",{class:"b",onclick:()=>act(()=>api("/api/up",{mode:"up"}),"connecting...")},"CONNECT"));
+    if(["Running","Stopped"].includes(s.state))row.append(h("button",{class:"b r",onclick:()=>{if(confirm("Log this node out? A new login will be required."))act(()=>api("/api/logout-node",{}),"logged out")}},"LOGOUT"));
+  }
+  c1.append(row);v.append(c1);
+  if(s.daemon&&(s.state==="NeedsLogin"||s.state==="Stopped"||s.state==="NoState"||s.authUrl))v.append(loginCard(s));
+  if(s.exitNode)v.append(h("div",{class:"card"},h("h2",{},"Active exit node"),kv([["IP",(s.exitNode.ips||[]).join(" ")],["Online",s.exitNode.online?"yes":"no"]])));
+}
+function loginCard(s){
+  const cfg=(S.sys&&S.sys.conf)||{};
+  const srv=h("input",{placeholder:"https://headscale.example.com (empty = Tailscale)",value:cfg.LOGIN_SERVER||"",style:"flex:1;min-width:220px"});
+  const key=h("input",{placeholder:"auth key tskey-... (optional)",type:"password",autocomplete:"off",style:"flex:1;min-width:220px"});
+  const host=h("input",{placeholder:"hostname (optional)",style:"width:200px"});
+  const out=h("pre",{class:"hide",id:"loginOut"});
+  const link=h("div",{id:"authLink"});
+  if(s.authUrl)link.append(h("p",{},"Open to authenticate: ",h("a",{href:s.authUrl,target:"_blank",rel:"noopener noreferrer"},s.authUrl)," ",h("button",{class:"b c",onclick:()=>copy(s.authUrl)},"COPY")));
+  const go=h("button",{class:"b",onclick:async()=>{
+    const r=await api("/api/up",{mode:"login",server:srv.value.trim(),authkey:key.value.trim(),hostname:host.value.trim()});
+    key.value="";
+    if(r.error)return note("ERROR: "+r.error,true);
+    note("login requested: wait for the link below");
+    clearInterval(loginPoll);
+    loginPoll=setInterval(async()=>{
+      const u=await api("/api/up/state");out.classList.remove("hide");out.textContent=u.out||"...";
+      await refresh();
+      if(!u.running)clearInterval(loginPoll);
+    },2000);
+  }},"LOGIN");
+  const cancel=h("button",{class:"b r",onclick:()=>act(()=>api("/api/up/cancel",{}),"cancelled")},"CANCEL");
+  return h("div",{class:"card"},h("h2",{},"Login"),
+    h("p",{class:"dim"},"Without an auth key you will get a link to open on your phone/PC. For a custom server (Headscale) fill in the first field."),
+    h("div",{class:"row"},srv),h("div",{class:"row"},key,host),h("div",{class:"row"},go,cancel),link,out);
+}
+
+// --------------------------------------------------------------- DEVICE ---
+let peerFilter="";
+function rPeers(v){
+  const s=st(),peers=s.peers||[];
+  const f=h("input",{placeholder:"filter...",value:peerFilter,style:"width:100%",oninput:e=>{peerFilter=e.target.value;renderPeerRows()}});
+  const tb=h("tbody",{id:"peerBody"});
+  v.append(h("div",{class:"card"},h("h2",{},"Devices ("+peers.filter(p=>p.online).length+"/"+peers.length+" online)"),f,
+    h("div",{style:"overflow:auto"},h("table",{},h("thead",{},h("tr",{},h("th",{},"NAME"),h("th",{},"IP"),h("th",{},"ACTIONS"),h("th",{},"OS"),h("th",{},"CONNECTION"),h("th",{},"TRAFFIC"))),tb))));
+  renderPeerRows();
+}
+function renderPeerRows(){
+  const tb=$("#peerBody");if(!tb)return;tb.replaceChildren();
+  const q=peerFilter.toLowerCase();
+  for(const p of (st().peers||[])){
+    if(q&&!(p.name+" "+p.dns+" "+(p.ips||[]).join(" ")+" "+p.user).toLowerCase().includes(q))continue;
+    const ip=(p.ips||[])[0]||"";
+    const name=h("td",{},h("span",{class:"dot"+(p.online?" on":"")}),p.name,h("div",{class:"dim"},p.user),
+      p.exitOption?h("span",{class:"tag"},"exit"):null,p.exit?h("span",{class:"tag y"},"in use"):null,p.ssh?h("span",{class:"tag"},"ssh"):null,
+      (p.routes||[]).length?h("span",{class:"tag"},"routes"):null,(p.tags||[]).map(t=>h("span",{class:"tag y"},t)));
+    const acts=h("td",{},
+      h("button",{class:"b c",onclick:()=>{tab="tools";buildTabs();render();$("#pingT").value=ip;doPing()}},"ping")," ",
+      h("button",{class:"b c",onclick:()=>copy(ip).then(()=>note("copied "+ip))},"copy")," ",
+      h("button",{class:"b c",onclick:()=>{tab="drop";buildTabs();render();$("#dropTo").value=p.name}},"send"),
+      p.exitOption&&p.online?[" ",h("button",{class:"b",onclick:()=>act(()=>api("/api/set",{"exit-node":p.exit?"":ip}),p.exit?"exit node disabled":"exit node: "+p.name)},p.exit?"stop exit":"use exit")]:null);
+    tb.append(h("tr",{},name,h("td",{},(p.ips||[]).map(x=>h("div",{},x))),acts,h("td",{},p.os),
+      h("td",{},p.online?(p.curAddr?"direct "+p.curAddr:(p.relay?"relay "+p.relay:"")):"seen "+ago(p.lastSeen)),
+      h("td",{},"↓"+fmtB(p.rx)," ↑"+fmtB(p.tx))));
+  }
+}
+
+// ------------------------------------------------------------ EXIT NODE ---
+function rExit(v){
+  const s=st(),pr=s.prefs||{};
+  const opts=(s.peers||[]).filter(p=>p.exitOption);
+  const cur=opts.find(p=>p.exit);
+  const c=h("div",{class:"card"},h("h2",{},"Use an exit node"));
+  c.append(h("p",{class:"dim"},cur?"Active: "+cur.name:"No exit node in use. In userspace mode the device's own traffic does not go through the tailnet."));
+  const sel=h("select",{style:"min-width:240px"},h("option",{value:""},"— none (direct traffic) —"),
+    opts.map(p=>h("option",{value:(p.ips||[])[0],selected:p.exit},p.name+(p.online?"":" (offline)"))));
+  c.append(h("div",{class:"row"},sel,h("button",{class:"b",onclick:()=>act(()=>api("/api/set",{"exit-node":sel.value}),"exit node updated")},"APPLY")));
+  c.append(toggle("Allow LAN access while using an exit node","exit-node-allow-lan-access",pr));
+  v.append(c);
+  const c2=h("div",{class:"card"},h("h2",{},"Offer this device"));
+  c2.append(toggle("Advertise as exit node","advertise-exit-node",pr,"Requires approval in the tailnet admin console"));
+  const rt=h("input",{value:pr["advertise-routes"]||"",placeholder:"192.168.1.0/24,10.0.0.0/24",style:"flex:1;min-width:240px"});
+  c2.append(h("div",{class:"row"},h("span",{class:"dim"},"Subnet route:"),rt,h("button",{class:"b",onclick:()=>act(()=>api("/api/set",{"advertise-routes":rt.value.trim()}),"routes updated")},"SAVE")));
+  v.append(c2);
+}
+
+// ---------------------------------------------------------- IMPOSTAZIONI ---
+function toggle(label,key,pr,sub){
+  const cb=h("input",{type:"checkbox",checked:!!pr[key],onchange:()=>act(()=>api("/api/set",{[key]:cb.checked}),label+": "+(cb.checked?"yes":"no"))});
+  return h("div",{class:"tog"},h("span",{},label,sub?h("small",{},sub):null),cb);
+}
+function rSettings(v){
+  const s=st(),pr=s.prefs;
+  if(!pr){v.append(h("div",{class:"card"},h("h2",{},"Settings"),"Available when the daemon is running and the node is logged in."));return}
+  const c=h("div",{class:"card"},h("h2",{},"Node preferences"));
+  c.append(toggle("Accept subnet routes","accept-routes",pr,"Reach LANs advertised by other nodes"),
+    toggle("Use Tailscale DNS (MagicDNS)","accept-dns",pr),
+    toggle("Shields up","shields-up",pr,"Block all incoming connections from the tailnet"),
+    toggle("Tailscale SSH","ssh",pr,"Tailnet-authenticated SSH to this device"),
+    toggle("Official web client","webclient",pr,"Tailscale's native web UI on port 5252 (tailnet)"));
+  const hn=h("input",{value:pr.hostname||"",placeholder:"hostname",style:"width:220px"});
+  const op=h("input",{value:pr.operator||"",placeholder:"operator user",style:"width:220px"});
+  c.append(h("div",{class:"row"},h("span",{class:"dim",style:"width:90px"},"Hostname"),hn,h("button",{class:"b",onclick:()=>act(()=>api("/api/set",{hostname:hn.value.trim()}),"hostname updated")},"SAVE")),
+    h("div",{class:"row"},h("span",{class:"dim",style:"width:90px"},"Operator"),op,h("button",{class:"b",onclick:()=>act(()=>api("/api/set",{operator:op.value.trim()}),"operator updated")},"SAVE")));
+  v.append(c);
+  v.append(h("div",{class:"card"},h("h2",{},"Control info"),kv([["Control URL",pr.controlUrl],["Auto-update",pr.autoUpdate?"yes":"no"],["Wants running",pr.wantRunning?"yes":"no"]])));
+}
+
+// -------------------------------------------------------------- TAILDROP ---
+async function rDrop(v){
+  const peers=(st().peers||[]).filter(p=>p.online);
+  const to=h("input",{id:"dropTo",list:"peerList",placeholder:"recipient name or IP",style:"min-width:240px"});
+  const dl=h("datalist",{id:"peerList"},peers.map(p=>h("option",{value:p.name})));
+  const file=h("input",{type:"file",multiple:true});
+  const bar=h("div",{class:"bar"},h("i",{style:"width:0%"}));
+  const c=h("div",{class:"card"},h("h2",{},"Send files (Taildrop)"),h("div",{class:"row"},to,dl,file),
+    h("div",{class:"row"},h("button",{class:"b",onclick:async()=>{
+      if(!to.value.trim()||!file.files.length)return note("choose a recipient and a file",true);
+      for(const f of file.files){
+        note("sending "+f.name+" ...");
+        await new Promise(res=>{
+          const x=new XMLHttpRequest();
+          x.open("PUT","/api/drop/send?to="+encodeURIComponent(to.value.trim())+"&name="+encodeURIComponent(f.name));
+          x.setRequestHeader("X-Rt","1");
+          x.upload.onprogress=e=>{if(e.lengthComputable)bar.firstChild.style.width=(e.loaded/e.total*100)+"%"};
+          x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}note(j.ok?f.name+": sent":"ERROR: "+(j.error||j.err||j.out||"unknown"),!j.ok);res()};
+          x.onerror=()=>{note("network ERROR",true);res()};
+          x.send(f);
+        });
+      }
+      bar.firstChild.style.width="0%";file.value="";
+    }},"SEND")),bar);
+  v.append(c);
+  const box=h("div",{class:"card"},h("h2",{},"Received"),h("div",{class:"dim"},"loading..."));
+  v.append(box);
+  try{
+    const inb=await api("/api/drop/inbox");
+    box.replaceChildren(h("h2",{},"Received"),h("div",{class:"dim"},"folder: "+inb.dir+" — receiving starts automatically when the node is connected (change it in System)"));
+    if(!inb.items.length)box.append(h("p",{},"(empty)"));
+    else box.append(h("table",{},h("tbody",{},inb.items.map(i=>h("tr",{},h("td",{},i.name),h("td",{},fmtB(i.size)),h("td",{},ago(new Date(i.mtime*1000).toISOString())),
+      h("td",{},h("a",{class:"b c",href:"/api/drop/dl?name="+encodeURIComponent(i.name)},"download")," ",h("button",{class:"b r",onclick:()=>act(()=>api("/api/drop/delete",{name:i.name}),"deleted").then(()=>render())},"delete")))))));
+  }catch(e){}
+}
+
+// ------------------------------------------------------------ SERVE/FUNNEL ---
+async function rServe(v){
+  const out=h("pre",{},"loading...");
+  const mode=h("select",{},h("option",{value:"serve"},"serve (tailnet only)"),h("option",{value:"funnel"},"funnel (public Internet)"));
+  const target=h("input",{placeholder:"local port (8077) or http://127.0.0.1:8077",style:"flex:1;min-width:240px"});
+  const https=h("input",{placeholder:"https port (443)",style:"width:150px"});
+  const path=h("input",{placeholder:"path (/)",style:"width:120px"});
+  v.append(h("div",{class:"card"},h("h2",{},"Publish a local service"),
+    h("p",{class:"dim"},"Expose a port of this device on the tailnet (serve) or on the Internet (funnel). HTTPS and certificates are handled by Tailscale; MagicDNS + HTTPS must be enabled in the admin console."),
+    h("div",{class:"row"},mode,target,https,path),
+    h("div",{class:"row"},h("button",{class:"b",onclick:()=>act(()=>api("/api/serve",{mode:mode.value,target:target.value.trim(),https:https.value.trim(),path:path.value.trim()}),"configured").then(()=>rServeRefresh(out))},"PUBLISH"),
+      h("button",{class:"b r",onclick:()=>act(()=>api("/api/serve",{action:"reset"}),"serve/funnel reset").then(()=>rServeRefresh(out))},"RESET ALL"))));
+  v.append(h("div",{class:"card"},h("h2",{},"Serve/funnel status"),out));
+  rServeRefresh(out);
+}
+async function rServeRefresh(out){try{const r=await api("/api/serve");out.textContent=(r.text||"").trim()||"(nothing published)"}catch(e){}}
+
+// ------------------------------------------------------------- STRUMENTI ---
+let pingBox,toolBox;
+async function doPing(){
+  const t=$("#pingT").value.trim();if(!t)return;
+  pingBox.textContent="ping "+t+" ...";
+  const r=await api("/api/ping",{target:t});
+  pingBox.textContent=((r.out||"")+(r.err||"")+(r.error||"")).trim()||"no reply";
+}
+function rTools(v){
+  const peers=st().peers||[];
+  pingBox=h("pre",{},"");toolBox=h("pre",{},"");
+  const t=h("input",{id:"pingT",list:"pl2",placeholder:"name or IP",style:"min-width:220px"});
+  const dl=h("datalist",{id:"pl2"},peers.map(p=>h("option",{value:p.name})));
+  v.append(h("div",{class:"card"},h("h2",{},"Ping / Whois"),h("div",{class:"row"},t,dl,
+    h("button",{class:"b",onclick:doPing},"PING"),
+    h("button",{class:"b c",onclick:async()=>{pingBox.textContent="...";const r=await api("/api/whois?ip="+encodeURIComponent(t.value.trim()));pingBox.textContent=((r.out||"")+(r.err||"")+(r.error||"")).trim()}},"WHOIS")),pingBox));
+  const run=async(label,p)=>{toolBox.textContent=label+" ...";const r=await api(p);toolBox.textContent=((r.out||"")+(r.err||"")+(r.error||"")).trim()||"(empty)"};
+  v.append(h("div",{class:"card"},h("h2",{},"Network diagnostics"),h("div",{class:"row"},
+    h("button",{class:"b",onclick:()=>run("netcheck","/api/netcheck")},"NETCHECK"),
+    h("button",{class:"b",onclick:()=>run("dns","/api/dns")},"DNS STATUS")),toolBox));
+  const cmd=h("input",{placeholder:"e.g.  status --peers=false   |   lock status   |   cert nome.tailnet.ts.net",style:"flex:1;min-width:260px"});
+  const co=h("pre",{},"");
+  const go=async()=>{const a=cmd.value.trim();if(!a)return;co.textContent="$ tailscale "+a+"\n...";const r=await api("/api/cli",{args:a});co.textContent="$ tailscale "+a+"\n"+((r.out||"")+(r.err||"")+(r.error||"")).trim()};
+  cmd.addEventListener("keydown",e=>{if(e.key==="Enter")go()});
+  v.append(h("div",{class:"card"},h("h2",{},"Tailscale CLI console"),
+    h("p",{class:"dim"},"Any subcommand of the real CLI (ssh and web excluded: interactive). 40s timeout."),
+    h("div",{class:"row"},h("span",{class:"dim"},"tailscale"),cmd,h("button",{class:"b",onclick:go},"RUN")),co));
+}
+
+// --------------------------------------------------------------- SISTEMA ---
+let logBox,logWhich="daemon";
+async function loadSys(){S.sys=await api("/api/sysinfo")}
+async function rSystem(v){
+  if(!S.sys)await loadSys();
+  const y=S.sys||{},sv=y.services||{},cf=y.conf||{};
+  const yn=b=>h("span",{class:"tag"+(b?"":" r")},b?"active":"stopped");
+  v.append(h("div",{class:"card"},h("h2",{},"Services"),
+    kv([["Daemon",yn(sv.daemon)],["Watchdog",yn(sv.watchdog)],["Taildrop RX",yn(sv.taildrop)],["Start at boot",yn(sv.autostart)],["Network mode",y.tun?"TUN (tailscale0)":"userspace-networking"],["Version",y.version]]),
+    sv.stopped?h("p",{class:"msg"},"Daemon stopped on purpose: the watchdog will not restart it until the next boot or a 'start'."):null,
+    h("div",{class:"row"},
+      h("button",{class:"b",onclick:()=>act(()=>api("/api/daemon",{action:"start"}),"daemon started").then(loadSys)},"START"),
+      h("button",{class:"b c",onclick:()=>act(()=>api("/api/daemon",{action:"restart"}),"daemon restarted").then(loadSys)},"RESTART"),
+      h("button",{class:"b r",onclick:()=>act(()=>api("/api/daemon",{action:"stop"}),"daemon stopped").then(loadSys)},"STOP")),
+    h("div",{class:"row"},
+      h("button",{class:"b",onclick:()=>act(()=>api("/api/service",{what:"autostart",action:sv.autostart?"off":"on"}),"boot setting updated").then(()=>loadSys().then(render))},sv.autostart?"DISABLE BOOT":"ENABLE BOOT"),
+      h("button",{class:"b",onclick:()=>act(()=>api("/api/service",{what:"watchdog",action:sv.watchdog?"stop":"start"}),"watchdog updated").then(()=>loadSys().then(render))},sv.watchdog?"STOP WATCHDOG":"START WATCHDOG"),
+      h("button",{class:"b c",onclick:()=>act(()=>api("/api/service",{what:"panel",action:"restart"}),"panel restarting, reload in 3s")},"RESTART PANEL"))));
+  const f={};
+  const field=(k,label,type,opts)=>{
+    const el=type==="sel"?h("select",{},opts.map(o=>h("option",{value:o,selected:cf[k]===o},o))):h("input",{value:cf[k]||"",style:"flex:1;min-width:200px"});
+    f[k]=el;return h("div",{class:"row"},h("span",{class:"dim",style:"width:140px"},label),el)
+  };
+  const chk=(k,label)=>{const el=h("input",{type:"checkbox",checked:cf[k]==="1"});f[k]=el;return h("div",{class:"row"},h("span",{class:"dim",style:"width:140px"},label),el)};
+  v.append(h("div",{class:"card"},h("h2",{},"Configuration"),
+    chk("WATCHDOG","Watchdog"),chk("TAILDROP","Receive Taildrop"),chk("PANEL","Web panel"),
+    field("TS_MODE","Network mode","sel",["auto","tun","userspace"]),
+    field("PANEL_PORT","Panel port"),field("TAILDROP_DIR","Taildrop folder"),field("LOGIN_SERVER","Login server"),
+    field("SOCKS5","SOCKS5 (host:porta)"),field("HTTP_PROXY","HTTP proxy (host:porta)"),field("TS_EXTRA","tailscaled arguments"),field("WIFI_WAIT","Boot Wi-Fi wait (s)"),
+    h("p",{class:"dim"},"SOCKS5/HTTP proxy let local apps reach the tailnet in userspace mode (e.g. 127.0.0.1:1055). Network mode, proxy and arguments require a daemon restart."),
+    h("div",{class:"row"},h("button",{class:"b",onclick:()=>{
+      const u={};for(const [k,el] of Object.entries(f))u[k]=el.type==="checkbox"?(el.checked?"1":"0"):el.value.trim();
+      act(()=>api("/api/config",u),"configuration saved").then(loadSys);
+    }},"SAVE"),h("button",{class:"b c",onclick:()=>act(()=>api("/api/daemon",{action:"restart"}),"daemon restarted")},"SAVE AND RESTART DAEMON"))));
+  v.append(h("div",{class:"card"},h("h2",{},"Panel security"),
+    h("p",{class:"dim"},"HMAC-signed session, HttpOnly/SameSite cookie, lockout after 5 wrong PINs. To reach it from outside the LAN use the tailnet (100.x IP) instead of opening ports."),
+    h("div",{class:"row"},h("button",{class:"b r",onclick:async()=>{if(!confirm("Generate a new PIN? All sessions will be closed."))return;const r=await api("/api/pin/new",{});alert("New PIN: "+r.pin);showLogin()}},"NEW PIN"))));
+  v.append(h("div",{class:"card"},h("h2",{},"Binary update"),
+    h("p",{class:"dim"},"Downloads the latest stable arm64 Tailscale from pkgs.tailscale.com, verifies the sha256 and replaces the binaries (.bak backup)."),
+    h("div",{class:"row"},
+      h("button",{class:"b c",onclick:async()=>{const r=await api("/api/latest");note(r.ok?"latest stable: "+r.version+" (installed: "+(st().version||y.version||"?")+")":"check failed: "+r.error,!r.ok)}},"CHECK"),
+      h("button",{class:"b",onclick:()=>{if(confirm("Update the binaries and restart the daemon?"))act(()=>api("/api/update",{}),"updated")}},"UPDATE"))));
+  logBox=h("pre",{},"");
+  const ls=h("select",{onchange:e=>{logWhich=e.target.value;loadLog()}},["daemon","rt","panel","drop"].map(x=>h("option",{value:x,selected:x===logWhich},x)));
+  v.append(h("div",{class:"card"},h("h2",{},"Log"),h("div",{class:"row"},ls,h("button",{class:"b c",onclick:loadLog},"RELOAD"),
+    h("button",{class:"b",onclick:async()=>{logBox.textContent="...";const r=await api("/api/service",{what:"doctor"});logBox.textContent=r.out||r.err}},"DIAGNOSTICS")),logBox));
+  loadLog();
+  v.append(h("div",{class:"card"},h("h2",{},"Device"),kv([["Hostname",y.hostname],["Uptime",fmtUp(y.uptime)],["Load",(y.load||[]).join(" ")],["Free RAM",y.memFree?fmtB(y.memFree)+" / "+fmtB(y.memTotal):""],["Battery",y.battery?y.battery+"%":""],["IP LAN",(y.lan||[]).join("  ")],["Python",y.python]])));
+}
+async function loadLog(){if(!logBox)return;const r=await api("/api/logs?which="+logWhich);logBox.textContent=r.text||"(empty)";logBox.scrollTop=logBox.scrollHeight}
+
+// ------------------------------------------------------------ matrix rain ---
+(function(){
+  const cv=$("#rain"),cx=cv.getContext("2d");let cols,drops;
+  function size(){cv.width=innerWidth;cv.height=innerHeight;cols=Math.floor(cv.width/16);drops=Array.from({length:cols},()=>Math.random()*cv.height/16)}
+  size();addEventListener("resize",size);
+  const chars="01ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ:.=*+-<>";
+  setInterval(()=>{
+    if(document.hidden)return;
+    cx.fillStyle="rgba(5,8,10,.12)";cx.fillRect(0,0,cv.width,cv.height);
+    cx.fillStyle="#00ff9c";cx.font="14px monospace";
+    for(let i=0;i<cols;i++){
+      cx.fillText(chars[Math.floor(Math.random()*chars.length)],i*16,drops[i]*16);
+      if(drops[i]*16>cv.height&&Math.random()>.975)drops[i]=0;drops[i]++;
+    }
+  },80);
+})();
+
+// ------------------------------------------------------------------ boot ---
+(async()=>{
+  try{await api("/api/status");await loadSys().catch(()=>{});start()}
+  catch(e){showLogin()}
+})();
+</script>
+</body>
+</html>

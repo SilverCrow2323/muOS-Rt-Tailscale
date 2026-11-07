@@ -1,0 +1,6 @@
+#!/bin/sh
+# Rt:Tailscale-K :: `tailscale` CLI wrapper bound to our daemon socket.
+# Usage:  ./ts status      ./ts ping <peer>      ./ts file cp <file> <peer>:
+# (The root filesystem of Knulli is read-only, so we cannot put `tailscale` in /usr/bin.)
+D=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+exec "$D/bin/tailscale" --socket="${RT_SOCK:-/var/run/tailscale/tailscaled.sock}" "$@"

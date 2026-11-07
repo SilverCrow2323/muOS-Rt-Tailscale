@@ -1,0 +1,17 @@
+{
+ "RouteAll": true,
+ "CorpDNS": true,
+ "ShieldsUp": false,
+ "RunSSH": false,
+ "RunWebClient": false,
+ "AdvertiseRoutes": [
+  "0.0.0.0/0",
+  "::/0"
+ ],
+ "Hostname": "muos-rg35xx",
+ "WantRunning": true,
+ "ControlURL": "https://controlplane.tailscale.com",
+ "AutoUpdate": {
+  "Apply": false
+ }
+}

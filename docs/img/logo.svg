@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><rect width="512" height="512" rx="112.64" fill="#1f1e1e"/><rect x="3" y="3" width="506" height="506" rx="109.64" fill="none" stroke="#f2b01e" stroke-opacity=".55" stroke-width="3"/><circle cx="133.12" cy="133.12" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="194.56" cy="133.12" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="256.00" cy="133.12" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="317.44" cy="133.12" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="378.88" cy="133.12" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="133.12" cy="194.56" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="194.56" cy="194.56" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="256.00" cy="194.56" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="317.44" cy="194.56" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="378.88" cy="194.56" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="133.12" cy="256.00" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="194.56" cy="256.00" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="256.00" cy="256.00" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="317.44" cy="256.00" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="378.88" cy="256.00" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="133.12" cy="317.44" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="194.56" cy="317.44" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="256.00" cy="317.44" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="317.44" cy="317.44" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="378.88" cy="317.44" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="133.12" cy="378.88" r="18.43" fill="#f2b01e" opacity="1"/>
+<circle cx="194.56" cy="378.88" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="256.00" cy="378.88" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="317.44" cy="378.88" r="18.43" fill="#f7f5f4" opacity="0.2"/>
+<circle cx="378.88" cy="378.88" r="18.43" fill="#f2b01e" opacity="1"/></svg>

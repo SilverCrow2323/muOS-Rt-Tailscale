@@ -1,0 +1,12 @@
+backend=Running
+daemon=1
+panel=1
+watchdog=1
+taildrop=1
+autostart=on
+tun=1
+port=8077
+pin=482915
+stopped=0
+version=0.1.0
+ts_version=1.104.2

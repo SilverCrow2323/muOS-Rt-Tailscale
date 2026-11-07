@@ -1,0 +1,510 @@
+#!/bin/sh
+# Rt:Tailscale-M :: service manager for muOS (MustardOS) Andromeda
+#
+# Manages: tailscaled + watchdog + web panel + Taildrop receiver.
+#
+# Usage: rt {start|stop|restart|ensure|boot|status|backend|summary|urls|doctor|log}
+#        rt daemon|panel|drop|watchdog {start|stop|restart}
+#        rt autostart [on|off|status]
+#        rt conf {get|set} KEY [VAL]
+#        rt pin {show|new}
+#        rt install      first-run setup (permissions, directories)
+#        rt update       download the latest stable Tailscale (arm64) and replace the binaries
+#        rt adopt        migrate the node from another Tailscale install on this device
+#        rt version
+#
+# Everything lives inside APP_DIR (the folder this script is in); nothing is written to the
+# root filesystem. The only file outside APP_DIR is the muOS init script
+# (/run/muos/storage/init/rttailscale.sh), created by `autostart on`.
+
+# shellcheck disable=SC2015,SC2016
+APP_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+CONF="$APP_DIR/config/rt.conf"
+RUN="${RT_RUN:-/tmp/rttailscale}"
+LOG="$RUN/rt.log"
+
+TS_DAEMON="$APP_DIR/bin/tailscaled"
+TS_CLI="$APP_DIR/bin/tailscale"
+STATE="$APP_DIR/state"
+RUNDIR="${RT_RUNDIR:-/var/run/tailscale}"
+SOCK="${RT_SOCK:-$RUNDIR/tailscaled.sock}"
+TS_LOG="/tmp/tailscaled.log"
+
+# muOS runs every executable in the user init folder at boot (needs Advanced > User Init Scripts = on)
+INIT_DIR="${RT_INIT_DIR:-/run/muos/storage/init}"
+INIT_SCRIPT="$INIT_DIR/rttailscale.sh"
+
+VERSION_FILE="$APP_DIR/VERSION"
+
+mkdir -p "$RUN" "$APP_DIR/config" 2>/dev/null
+
+# ---------------------------------------------------------------- config ---
+CONF_DEFAULTS() {
+	[ -f "$CONF" ] && return 0
+	cat >"$CONF" <<'CFG'
+# Rt:Tailscale-K :: configuration (KEY=VALUE, one per line)
+PANEL=1
+PANEL_PORT=8077
+WATCHDOG=1
+TAILDROP=1
+TAILDROP_DIR=
+TS_MODE=auto
+LOGIN_SERVER=
+SOCKS5=
+HTTP_PROXY=
+TS_EXTRA=
+WIFI_WAIT=120
+CFG
+}
+CONF_DEFAULTS
+
+CONF_GET() {
+	_V=$(sed -n "s/^$1=//p" "$CONF" 2>/dev/null | tail -n 1)
+	if [ -n "$_V" ]; then printf '%s' "$_V"; else printf '%s' "$2"; fi
+}
+
+CONF_SET() {
+	touch "$CONF"
+	grep -v "^$1=" "$CONF" >"$CONF.tmp" 2>/dev/null
+	printf '%s=%s\n' "$1" "$2" >>"$CONF.tmp"
+	mv "$CONF.tmp" "$CONF"
+}
+
+LOGLINE() {
+	printf '%s [rt] %s\n' "$(date '+%H:%M:%S')" "$*" >>"$LOG"
+	if [ -f "$LOG" ] && [ "$(wc -c <"$LOG" 2>/dev/null || echo 0)" -gt 262144 ]; then
+		tail -n 400 "$LOG" >"$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+	fi
+}
+
+# ------------------------------------------------------------- processes ---
+# pidof (process name) + pidfile checked through cmdline: never two daemons, even if the
+# process name changes.
+TS_PIDS() {
+	_TP=$(pidof tailscaled 2>/dev/null)
+	if [ -z "$_TP" ] && PF_ALIVE "$RUN/daemon.pid" "bin/tailscaled"; then
+		_TP=$(cat "$RUN/daemon.pid")
+	fi
+	printf '%s' "$_TP"
+}
+TS_RUNNING() { [ -n "$(TS_PIDS)" ]; }
+
+# PF_ALIVE pidfile pattern: really alive and with a matching cmdline (no recycled-PID false positives)
+PF_ALIVE() {
+	[ -f "$1" ] || return 1
+	_P=$(cat "$1" 2>/dev/null)
+	[ -n "$_P" ] || return 1
+	kill -0 "$_P" 2>/dev/null || return 1
+	[ -r "/proc/$_P/cmdline" ] || return 0
+	tr '\0' ' ' <"/proc/$_P/cmdline" | grep -q "$2"
+}
+
+# SPAWN pidfile logfile cmd...: setsid + exec, so the pidfile holds the real PID of the process
+SPAWN() {
+	_PF="$1"
+	_LF="$2"
+	shift 2
+	setsid sh -c 'echo $$ >"$0"; exec "$@"' "$_PF" "$@" >>"$_LF" 2>&1 </dev/null &
+}
+
+KILL_PF() {
+	[ -f "$1" ] || return 0
+	_P=$(cat "$1" 2>/dev/null)
+	[ -n "$_P" ] && kill "$_P" 2>/dev/null
+	_i=0
+	while [ -n "$_P" ] && kill -0 "$_P" 2>/dev/null && [ "$_i" -lt 20 ]; do
+		sleep 0.25
+		_i=$((_i + 1))
+	done
+	[ -n "$_P" ] && kill -0 "$_P" 2>/dev/null && kill -9 "$_P" 2>/dev/null
+	rm -f "$1"
+}
+
+# --------------------------------------------------------------- daemon ----
+# Recover the node identity from another Tailscale install on the device, if there is one:
+#  - /opt/muos/config/tailscale        muOS 2601 (Jacaranda) built-in Tailscale
+#  - ../Tailscale/state                the community Tailscale app
+#  - ../RtTailscale_old/state          an older Rt:Tailscale
+MIGRATE_STATE() {
+	[ -f "$STATE/tailscaled.state" ] && return 0
+	for SRC in /opt/muos/config/tailscale "$(dirname "$APP_DIR")/Tailscale/state" "$(dirname "$APP_DIR")/RtTailscale_old/state"; do
+		[ "$SRC" = "$STATE" ] && continue
+		if [ -f "$SRC/tailscaled.state" ]; then
+			cp -a "$SRC/." "$STATE/" 2>/dev/null && LOGLINE "node state migrated from $SRC" && return 0
+		fi
+	done
+	return 0
+}
+
+# Make sure /dev/net/tun exists. Returns 0 if it is usable as a character device.
+TUN_PREPARE() {
+	[ -c /dev/net/tun ] && return 0
+	modprobe tun >/dev/null 2>&1
+	[ -c /dev/net/tun ] && return 0
+	mkdir -p /dev/net 2>/dev/null
+	mknod /dev/net/tun c 10 200 2>/dev/null && chmod 600 /dev/net/tun 2>/dev/null
+	[ -c /dev/net/tun ]
+}
+
+TUN_MODE() {
+	case "$(CONF_GET TS_MODE auto)" in
+		userspace) printf 'userspace-networking'; return ;;
+	esac
+	if TUN_PREPARE; then
+		printf 'tailscale0'
+	else
+		printf 'userspace-networking'
+	fi
+}
+
+DAEMON_LAUNCH() {
+	# $1 = value for tailscaled --tun
+	set -- --statedir="$STATE" --socket="$SOCK" --tun="$1"
+	_S5=$(CONF_GET SOCKS5 "")
+	_HP=$(CONF_GET HTTP_PROXY "")
+	_EX=$(CONF_GET TS_EXTRA "")
+	[ -n "$_S5" ] && set -- "$@" --socks5-server="$_S5"
+	[ -n "$_HP" ] && set -- "$@" --outbound-http-proxy-listen="$_HP"
+	# shellcheck disable=SC2086
+	[ -n "$_EX" ] && set -- "$@" $_EX
+
+	rm -f "$SOCK"
+	LOGLINE "starting tailscaled ($*)"
+	SPAWN "$RUN/daemon.pid" "$TS_LOG" "$TS_DAEMON" "$@"
+
+	_i=0
+	while [ ! -S "$SOCK" ] && [ "$_i" -lt 30 ]; do
+		sleep 0.5
+		_i=$((_i + 1))
+	done
+	[ -S "$SOCK" ]
+}
+
+DAEMON_START() {
+	TS_RUNNING && return 0
+	if [ ! -x "$TS_DAEMON" ] || [ ! -x "$TS_CLI" ]; then
+		LOGLINE "tailscale binaries missing in $APP_DIR/bin (run: rt update)"
+		return 1
+	fi
+	mkdir -p "$STATE" "$RUNDIR"
+	MIGRATE_STATE
+	[ -f "$TS_LOG" ] && [ "$(wc -c <"$TS_LOG")" -gt 1048576 ] && : >"$TS_LOG"
+
+	_MODE=$(TUN_MODE)
+	DAEMON_LAUNCH "$_MODE"
+	# Kernel without a working TUN driver: in auto mode fall back to userspace networking.
+	if [ ! -S "$SOCK" ] && [ "$_MODE" != userspace-networking ] && [ "$(CONF_GET TS_MODE auto)" = auto ]; then
+		LOGLINE "TUN start failed, retrying with userspace-networking"
+		DAEMON_STOP
+		DAEMON_LAUNCH userspace-networking
+	fi
+	[ -S "$SOCK" ]
+}
+
+DAEMON_STOP() {
+	DROP_STOP
+	_PIDS=$(TS_PIDS)
+	[ -n "$_PIDS" ] || return 0
+	# shellcheck disable=SC2086
+	kill $_PIDS 2>/dev/null
+	_i=0
+	while TS_RUNNING && [ "$_i" -lt 20 ]; do
+		sleep 0.25
+		_i=$((_i + 1))
+	done
+	# shellcheck disable=SC2046
+	TS_RUNNING && kill -9 $(TS_PIDS) 2>/dev/null
+	rm -f "$SOCK" "$RUN/daemon.pid"
+	LOGLINE "tailscaled stopped"
+}
+
+BACKEND() {
+	TS_RUNNING || { printf 'Daemon'; return; }
+	"$TS_CLI" --socket="$SOCK" status --json 2>/dev/null | grep -o '"BackendState": *"[^"]*"' | head -n 1 | cut -d'"' -f4
+}
+
+# ---------------------------------------------------------------- panel ----
+PANEL_START() {
+	[ "$(CONF_GET PANEL 1)" = 1 ] || return 0
+	PF_ALIVE "$RUN/panel.pid" server.py && return 0
+	if ! command -v python3 >/dev/null 2>&1; then
+		LOGLINE "python3 not found: web panel cannot start"
+		return 1
+	fi
+	PIN_ENSURE
+	LOGLINE "starting web panel on :$(CONF_GET PANEL_PORT 8077)"
+	SPAWN "$RUN/panel.pid" "$RUN/panel.log" python3 "$APP_DIR/panel/server.py"
+	sleep 1
+	PF_ALIVE "$RUN/panel.pid" server.py
+}
+PANEL_STOP() { KILL_PF "$RUN/panel.pid"; }
+
+# ----------------------------------------------------------------- drop ----
+DROP_DIR() {
+	_D=$(CONF_GET TAILDROP_DIR "")
+	[ -n "$_D" ] || _D="$APP_DIR/taildrop"
+	printf '%s' "$_D"
+}
+DROP_START() {
+	[ "$(CONF_GET TAILDROP 1)" = 1 ] || return 0
+	PF_ALIVE "$RUN/drop.pid" "file get" && return 0
+	_D=$(DROP_DIR)
+	mkdir -p "$_D"
+	SPAWN "$RUN/drop.pid" "$RUN/drop.log" "$TS_CLI" --socket="$SOCK" file get --loop --conflict=rename "$_D"
+}
+DROP_STOP() { KILL_PF "$RUN/drop.pid"; }
+
+# ------------------------------------------------------------- watchdog ----
+WD_START() {
+	[ "$(CONF_GET WATCHDOG 1)" = 1 ] || return 0
+	PF_ALIVE "$RUN/watchdog.pid" watchdog && return 0
+	SPAWN "$RUN/watchdog.pid" "$LOG" sh "$APP_DIR/watchdog"
+}
+WD_STOP() { KILL_PF "$RUN/watchdog.pid"; }
+
+# ------------------------------------------------------------------- pin ---
+PIN_ENSURE() {
+	[ -s "$APP_DIR/config/panel.pin" ] || PIN_NEW >/dev/null
+	[ -s "$APP_DIR/config/panel.key" ] || tr -dc 'a-f0-9' </dev/urandom 2>/dev/null | head -c 64 >"$APP_DIR/config/panel.key"
+	chmod 600 "$APP_DIR/config/panel.pin" "$APP_DIR/config/panel.key" 2>/dev/null
+}
+PIN_NEW() {
+	tr -dc '0-9' </dev/urandom 2>/dev/null | head -c 6 >"$APP_DIR/config/panel.pin"
+	# new key = every open panel session is invalidated
+	tr -dc 'a-f0-9' </dev/urandom 2>/dev/null | head -c 64 >"$APP_DIR/config/panel.key"
+	chmod 600 "$APP_DIR/config/panel.pin" "$APP_DIR/config/panel.key" 2>/dev/null
+	cat "$APP_DIR/config/panel.pin"
+}
+
+# ------------------------------------------------------------- autostart ---
+# muOS runs the executables in /run/muos/storage/init at boot when Advanced > User Init Scripts is on.
+AUTOSTART_ENABLED() { [ -f "$INIT_SCRIPT" ]; }
+
+AUTOSTART_ON() {
+	mkdir -p "$INIT_DIR" || return 1
+	# detached, in a session of its own: the muOS boot must never wait for Wi-Fi
+	printf '#!/bin/sh\n# Installed by Rt:Tailscale-M\nsetsid "%s/rt" boot >/dev/null 2>&1 </dev/null &\n' "$APP_DIR" >"$INIT_SCRIPT" || return 1
+	chmod +x "$INIT_SCRIPT" 2>/dev/null
+	# shellcheck source=/dev/null
+	[ -f /opt/muos/script/var/config.sh ] && . /opt/muos/script/var/config.sh
+	if command -v GET_VAR >/dev/null 2>&1 && [ "$(GET_VAR "config" "settings/advanced/user_init")" != "1" ]; then
+		SET_VAR "config" "settings/advanced/user_init" "1"
+		printf 'Start at boot: enabled (also switched on Advanced > User Init Scripts)\n'
+	else
+		printf 'Start at boot: enabled\n'
+	fi
+}
+
+AUTOSTART_OFF() {
+	rm -f "$INIT_SCRIPT"
+	printf 'Start at boot: disabled\n'
+}
+
+# ---------------------------------------------------------------- compose --
+# Two flags in /tmp (gone after a reboot):
+#   stopped      the daemon was stopped on purpose (the panel and the watchdog keep running so
+#                you can start it again from the web panel)
+#   stopped_all  `rt stop`: nothing may be (re)started until `rt start` / the next boot
+ENSURE() {
+	[ -f "$RUN/stopped_all" ] && return 0
+	if [ ! -f "$RUN/stopped" ]; then
+		DAEMON_START
+		if [ "$(BACKEND)" = Running ]; then DROP_START; fi
+	fi
+	# A `stop` may have arrived while the daemon was starting: check again before the rest.
+	[ -f "$RUN/stopped_all" ] && return 0
+	PANEL_START
+	WD_START
+}
+
+BOOT() {
+	rm -f "$RUN/stopped" "$RUN/stopped_all"
+	_W=$(CONF_GET WIFI_WAIT 120)
+	_i=0
+	while ! ip -4 route show default 2>/dev/null | grep -q . && [ "$_i" -lt "$_W" ]; do
+		sleep 1
+		_i=$((_i + 1))
+	done
+	LOGLINE "boot: network ready after ${_i}s"
+	ENSURE
+}
+
+LAN_IPS() {
+	ip -4 -o addr show scope global 2>/dev/null | awk '$2 != "tailscale0" {print $4}' | cut -d/ -f1
+}
+
+URLS() {
+	_PORT=$(CONF_GET PANEL_PORT 8077)
+	for A in $(LAN_IPS); do printf 'LAN http://%s:%s\n' "$A" "$_PORT"; done
+	_T=$("$TS_CLI" --socket="$SOCK" ip -4 2>/dev/null | head -n 1)
+	printf '%s' "$_T" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' && printf 'TS  http://%s:%s\n' "$_T" "$_PORT"
+	return 0
+}
+
+# key=value lines, parsed by the on-device UI (keeps the UI free of JSON for these)
+SUMMARY() {
+	printf 'backend=%s\n' "$(BACKEND)"
+	TS_RUNNING && printf 'daemon=1\n' || printf 'daemon=0\n'
+	PF_ALIVE "$RUN/panel.pid" server.py && printf 'panel=1\n' || printf 'panel=0\n'
+	PF_ALIVE "$RUN/watchdog.pid" watchdog && printf 'watchdog=1\n' || printf 'watchdog=0\n'
+	PF_ALIVE "$RUN/drop.pid" "file get" && printf 'taildrop=1\n' || printf 'taildrop=0\n'
+	AUTOSTART_ENABLED && printf 'autostart=on\n' || printf 'autostart=off\n'
+	[ -d /sys/class/net/tailscale0 ] && printf 'tun=1\n' || printf 'tun=0\n'
+	printf 'port=%s\n' "$(CONF_GET PANEL_PORT 8077)"
+	[ -s "$APP_DIR/config/panel.pin" ] && printf 'pin=%s\n' "$(cat "$APP_DIR/config/panel.pin")" || printf 'pin=\n'
+	[ -f "$RUN/stopped" ] && printf 'stopped=1\n' || printf 'stopped=0\n'
+	printf 'version=%s\n' "$(VERSION)"
+	printf 'ts_version=%s\n' "$("$TS_CLI" version 2>/dev/null | head -n 1)"
+}
+
+VERSION() { cat "$VERSION_FILE" 2>/dev/null || printf 'dev'; }
+
+# ------------------------------------------------------- install / update ---
+INSTALL() {
+	mkdir -p "$APP_DIR/bin" "$APP_DIR/config" "$APP_DIR/state" "$APP_DIR/taildrop"
+	chmod +x "$APP_DIR/rt" "$APP_DIR/watchdog" "$APP_DIR/ts" "$APP_DIR/mux_launch.sh" "$APP_DIR/bin/tailscale" "$APP_DIR/bin/tailscaled" "$APP_DIR/.game/bin/love" 2>/dev/null
+	chmod 700 "$APP_DIR/state" 2>/dev/null
+	CONF_DEFAULTS
+	if [ ! -x "$TS_CLI" ] || [ ! -x "$TS_DAEMON" ]; then
+		printf 'Tailscale binaries not found in bin/; downloading the latest stable release...\n'
+		UPDATE || return 1
+	fi
+	printf 'Install OK (%s)\n' "$("$TS_CLI" version 2>/dev/null | head -n 1)"
+}
+
+UPDATE() {
+	command -v python3 >/dev/null 2>&1 || { printf 'python3 is required for updates\n' >&2; return 1; }
+	python3 "$APP_DIR/panel/server.py" --update
+}
+
+# Switch from another Tailscale install: take its node identity and make sure only one tailscaled runs.
+ADOPT() {
+	if [ -f "$INIT_DIR/tailscale.sh" ]; then
+		mv "$INIT_DIR/tailscale.sh" "$INIT_DIR/tailscale.sh.disabled-by-rt" && printf 'Disabled the other app'"'"'s init script (tailscale.sh)\n'
+	fi
+	# a daemon that is not ours would keep the socket busy
+	if TS_RUNNING && ! PF_ALIVE "$RUN/daemon.pid" "bin/tailscaled"; then
+		# shellcheck disable=SC2046
+		kill $(TS_PIDS) 2>/dev/null
+		sleep 1
+		printf 'Stopped the other tailscaled\n'
+	fi
+	rm -f "$STATE/tailscaled.state"
+	MIGRATE_STATE
+	[ -f "$STATE/tailscaled.state" ] && printf 'Node identity migrated\n' || printf 'No previous node identity found (you will need to log in)\n'
+}
+
+# ---------------------------------------------------------------- doctor ---
+DOCTOR() {
+	_ok() { printf '[ OK ] %s\n' "$1"; }
+	_ko() { printf '[FAIL] %s\n' "$1"; }
+	_wn() { printf '[WARN] %s\n' "$1"; }
+	printf 'Rt:Tailscale-M %s\n' "$(VERSION)"
+	grep -E '^(OS_NAME|OS_VERSION|PRETTY_NAME)=' /etc/os-release 2>/dev/null
+	uname -srm
+	[ -x "$TS_DAEMON" ] && [ -x "$TS_CLI" ] && _ok "tailscale binaries present" || _ko "binaries missing in bin/ (run: rt update)"
+	command -v python3 >/dev/null 2>&1 && _ok "python3 present (web panel)" || _ko "python3 missing: the web panel will not start"
+	command -v setsid >/dev/null 2>&1 && _ok "setsid present" || _ko "setsid missing: daemons cannot be detached"
+	[ -c /dev/net/tun ] && _ok "/dev/net/tun present (TUN mode)" || _wn "no TUN device: userspace-networking will be used (outgoing traffic of other apps will not use the tailnet)"
+	ip -4 route show default 2>/dev/null | grep -q . && _ok "default route present (network up)" || _wn "no default route"
+	TS_RUNNING && _ok "tailscaled running" || _wn "tailscaled stopped"
+	PF_ALIVE "$RUN/panel.pid" server.py && _ok "web panel running" || _wn "web panel stopped"
+	PF_ALIVE "$RUN/watchdog.pid" watchdog && _ok "watchdog running" || _wn "watchdog stopped"
+	[ -f /opt/muos/script/var/func.sh ] && _ok "muOS detected (/opt/muos)" || _wn "/opt/muos/script/var/func.sh not found: not running on muOS?"
+	[ -x "$APP_DIR/.game/bin/love" ] && _ok "LOVE runtime present (.game/bin/love)" || _wn "LOVE runtime missing: the on-device app cannot start (the service still works)"
+	if AUTOSTART_ENABLED; then
+		_ok "start at boot: init script installed ($INIT_SCRIPT)"
+		# shellcheck source=/dev/null
+		[ -f /opt/muos/script/var/config.sh ] && . /opt/muos/script/var/config.sh
+		if command -v GET_VAR >/dev/null 2>&1; then
+			[ "$(GET_VAR "config" "settings/advanced/user_init")" = "1" ] && _ok "Advanced > User Init Scripts is on" || _wn "Advanced > User Init Scripts is OFF: the init script will not run at boot"
+		fi
+	else
+		_wn "start at boot is not set up"
+	fi
+	[ -f "$INIT_DIR/tailscale.sh" ] && _wn "another Tailscale init script exists (tailscale.sh): run 'rt adopt' to avoid two daemons"
+	[ -d "$(dirname "$APP_DIR")/Tailscale/bin" ] && _wn "the community Tailscale app is installed next to this one: keep only one"
+	df -h "$APP_DIR" 2>/dev/null | tail -n 1 | sed 's/^/       app storage: /'
+	return 0
+}
+
+case "$1" in
+	start)
+		rm -f "$RUN/stopped" "$RUN/stopped_all"
+		ENSURE
+		;;
+	stop)
+		touch "$RUN/stopped" "$RUN/stopped_all"
+		WD_STOP
+		PANEL_STOP
+		DAEMON_STOP
+		;;
+	restart)
+		"$0" stop
+		"$0" start
+		;;
+	ensure) ENSURE ;;
+	boot) BOOT ;;
+	backend) BACKEND ;;
+	summary) SUMMARY ;;
+	urls) URLS ;;
+	doctor) DOCTOR ;;
+	install) INSTALL ;;
+	update) UPDATE ;;
+	adopt) ADOPT ;;
+	version) VERSION ;;
+	log) tail -n "${2:-30}" "$LOG" 2>/dev/null ;;
+	daemon)
+		case "$2" in
+			start) rm -f "$RUN/stopped"; DAEMON_START ;;
+			stop) touch "$RUN/stopped"; DAEMON_STOP ;;
+			restart) DAEMON_STOP; rm -f "$RUN/stopped"; DAEMON_START ;;
+		esac
+		;;
+	panel)
+		case "$2" in
+			start) PANEL_START ;;
+			stop) PANEL_STOP ;;
+			restart) PANEL_STOP; PANEL_START ;;
+		esac
+		;;
+	drop)
+		case "$2" in
+			start) DROP_START ;;
+			stop) DROP_STOP ;;
+			restart) DROP_STOP; DROP_START ;;
+		esac
+		;;
+	watchdog)
+		case "$2" in
+			start) WD_START ;;
+			stop) WD_STOP ;;
+			restart) WD_STOP; WD_START ;;
+		esac
+		;;
+	autostart)
+		case "$2" in
+			on) AUTOSTART_ON ;;
+			off) AUTOSTART_OFF ;;
+			status) AUTOSTART_ENABLED && printf 'on\n' || printf 'off\n' ;;
+			*) AUTOSTART_ENABLED ;;
+		esac
+		;;
+	conf)
+		case "$2" in
+			get) CONF_GET "$3" "$4" ;;
+			set) CONF_SET "$3" "$4" ;;
+		esac
+		;;
+	pin)
+		case "$2" in
+			new) PIN_NEW ;;
+			*) PIN_ENSURE; cat "$APP_DIR/config/panel.pin" ;;
+		esac
+		;;
+	droppath) DROP_DIR ;;
+	*)
+		printf 'Usage: %s {start|stop|restart|ensure|boot|backend|summary|urls|doctor|install|update|adopt|version|log|daemon|panel|drop|watchdog|autostart|conf|pin}\n' "$0" >&2
+		exit 1
+		;;
+esac

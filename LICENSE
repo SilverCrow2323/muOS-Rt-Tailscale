@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Mids Enjoyer
+Copyright (c) 2026 SPDW Factory
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---------------------------------------------------------------------------
+Tailscale binaries bundled in release zips (bin/tailscale, bin/tailscaled) are
+(c) Tailscale Inc. and licensed under the BSD 3-Clause license (see
+bin/LICENSE.tailscale in the release zip). This project is not affiliated with
+or endorsed by Tailscale Inc. or the Knulli project.
+
+---------------------------------------------------------------------------
+Derivation notice
+
+Rt:Tailscale-M is a fork of mja00/muos-tailscale-plugin, which was itself
+a fork of Mids Enjoyer's earlier muOS Tailscale work. The MIT license above
+(© 2026 SPDW Factory) covers only SPDW Factory's own additions and
+modifications. Code derived from earlier projects remains under the
+copyright and license terms of those projects. See CREDITS.md.
