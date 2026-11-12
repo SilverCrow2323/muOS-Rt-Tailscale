@@ -203,3 +203,7 @@ RT_BIN_DIR=/path/to/arm64/bins tests/run_all.sh   # + integration tests with the
   (also invalidates all sessions).
 - The CLI console blocks `ssh`, `web`, `serve` and `funnel` because those
   are interactive or have dedicated validated endpoints.
+
+## 📚 Practical Wiki
+
+The [GitHub Wiki](https://github.com/SilverCrow2323/muOS-Rt-Tailscale/wiki) is the quick-use handbook; the tracked source lives in [wiki-source/](wiki-source/). Start with the [Wiki Home](wiki-source/Home.md), [Installation](wiki-source/Installation.md), [Controls](wiki-source/Controls.md) or [Troubleshooting](wiki-source/Troubleshooting.md). Maintainers can publish reviewed pages with `sh tools/publish_wiki.sh`.
