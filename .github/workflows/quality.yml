@@ -1,0 +1,22 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y luajit shellcheck python3-pyflakes python3-qrcode python3-opencv love xvfb
+      - name: Run project checks
+        run: tests/run_all.sh

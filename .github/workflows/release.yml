@@ -1,0 +1,39 @@
+name: Build and publish release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/RtTailscale/VERSION"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read release version
+        id: version
+        run: echo "version=$(tr -d '\r\n' < app/RtTailscale/VERSION)" >> "$GITHUB_OUTPUT"
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip curl git python3 binutils
+      - name: Build muOS archive
+        run: |
+          chmod +x build.sh
+          ./build.sh
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Rt:Tailscale-M v${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.muxapp
+            dist/*.sha256

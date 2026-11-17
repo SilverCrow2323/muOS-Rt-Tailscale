@@ -8,6 +8,8 @@ problem, with `./rt log 50` and `tail -n 50 /tmp/tailscaled.log`; the app's own 
 | Not in the Applications list | archive not installed, or extracted with a different structure | the `.muxapp` must contain one folder (`RtTailscale/`) with `mux_launch.sh`; install via *Archive Manager* or unzip into `MUOS/application/` |
 | App opens and returns to the menu at once | the LÖVE runtime cannot start (missing library) or `mux_launch.sh` lost its exec bit | read `.game/rttailscale.log`; rebuild with `--full-love` or copy `libs.aarch64` from a LÖVE app that works; `chmod +x mux_launch.sh .game/bin/love` |
 | Buttons A/B (or X/Y) feel swapped | layout differs from the Nintendo default | *Settings → Nintendo button layout* |
+| MENU + START does not quit | controller does not expose MENU as SDL `guide` | try SELECT + START; check the device's SDL mapping |
+| L2/R2 do not change tabs | trigger axes are not exposed by the controller mapping | use L1/R1, or inspect the current Andromeda SDL mapping |
 | Stays on "Waiting for the login link..." | no internet/DNS yet, or clock far off | check Wi-Fi; `./ts netcheck`; look for "failed to resolve" in `/tmp/tailscaled.log`; make sure the device time is right |
 | Asks to log in again after every reboot | `state/` not persistent or not writable | check `state/tailscaled.state` exists after login; do not run the app from a read-only location |
 | "Start at boot" on, nothing starts | *User Init Scripts* is off, or the boot wait is too short | `./rt doctor` tells you; enable *Advanced settings → User Init Scripts*; raise `WIFI_WAIT` in `config/rt.conf` |

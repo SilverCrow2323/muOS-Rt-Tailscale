@@ -29,7 +29,7 @@ and the successor of *Shin RtTailscale*, by SPDW Factory.
 | 🚀 **Starts at boot** | A muOS *user init script*, installed and switched on for you. A watchdog restarts anything that dies. |
 | 📱 **Log in by QR code** | No typing on a D-pad: scan the code with your phone. |
 | 🌍 **Exit nodes** | Highlight a device, press the button, your traffic leaves through it. |
-| 🎮 **Made for the D-pad** | Icon-only button legend, light and dark theme, quit with SELECT+START. |
+| 🎮 **Made for the D-pad** | Larger type, icon-only button legend, light and dark theme, quit with MENU+START. |
 | 🌐 **Web panel** | PIN-protected panel (status, peers, Taildrop, Serve/Funnel, CLI console) on port 8077. |
 | 📥 **Taildrop** | Files sent to the device land in `RtTailscale/taildrop/`. |
 | 🧰 **Works without TUN** | No `/dev/net/tun` in your kernel? It falls back to userspace networking by itself. |
@@ -62,10 +62,16 @@ Everything below is rendered by the real UI code (`tests/fixtures` provide the d
 
 <p align="center"><img src="docs/img/controls.png" width="520" alt="Controller legend"></p>
 
-The app never prints a key legend: it shows the buttons themselves (the same icons you see at the bottom of every screen).
-Names follow the **Nintendo layout** of Anbernic handhelds (A = right button, B = bottom); if your buttons feel swapped,
-turn it off in *Settings → Nintendo button layout*. Keyboard (for testing on a PC): arrows, Enter = A, Esc = B,
-X, Y, Q/E = L/R, Ctrl+Q = quit.
+The app shows physical button artwork in the footer rather than a text-only key list. Face-button names follow the
+**Nintendo layout** used by many Anbernic handhelds (A = right, B = bottom); change *Settings → Nintendo button layout*
+when using a different arrangement.
+
+- **MENU + START** (MENU is SDL's `guide` button): quit to the muOS frontend, matching Andromeda's application shortcut.
+- **SELECT + START** remains available as a compatibility fallback.
+- **L1 / R1** and **L2 / R2**: previous / next tab.
+- D-pad: move through rows; A: confirm; B: back; X: use the highlighted device as exit node; Y: refresh.
+
+Keyboard (PC testing): arrows, Enter = A, Esc = B, X/Y = face actions, Q/E = L/R, Ctrl+Q = quit.
 
 ## 📦 Install
 
