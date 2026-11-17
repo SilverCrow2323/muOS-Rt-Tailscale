@@ -117,11 +117,17 @@ function I.shoulder(x, y, w, h, letter, T, font)   -- L / R
   lg.printf(letter, x, y + (h - font:getHeight()) / 2 + 1, w, "center")
 end
 
-function I.startpill(x, y, w, h, kind, T)      -- kind = "start" | "select"
+function I.startpill(x, y, w, h, kind, T)      -- kind = "start" | "select" | "menu"
   I.card(x, y, w, h, T.btnFace, T.border2, h / 2)
   col(T.btnText)
   if kind == "start" then
     lg.polygon("fill", x + w / 2 - h * .14, y + h * .26, x + w / 2 - h * .14, y + h * .74, x + w / 2 + h * .26, y + h / 2)
+  elseif kind == "menu" then
+    lg.setLineWidth(1.5)
+    for i = 0, 2 do
+      local yy = y + h * (0.28 + i * 0.22)
+      lg.line(x + w * 0.28, yy, x + w * 0.72, yy)
+    end
   else
     lg.setLineWidth(1.5)
     lg.line(x + w * .3, y + h * .38, x + w * .7, y + h * .38)
@@ -135,7 +141,7 @@ function I.legend_entry(x, y, e, T, font)
   local h = 20
   if e.btn == "dpad" then I.dpad(x + 11, y + h / 2, 21, T); x = x + 25
   elseif e.btn == "combo" then
-    I.startpill(x, y + 2, 26, 16, "select", T)
+    I.startpill(x, y + 2, 26, 16, "menu", T)
     col(T.muted); lg.setFont(font); lg.print("+", x + 29, y + 1)
     I.startpill(x + 40, y + 2, 26, 16, "start", T)
     x = x + 72
