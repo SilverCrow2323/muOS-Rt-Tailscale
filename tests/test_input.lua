@@ -12,10 +12,24 @@ for _, b in ipairs({ "a", "b", "x", "y" }) do eq(input.swap(b, false), b, b .. "
 -- swapping twice is the identity
 for _, b in ipairs({ "a", "b", "x", "y" }) do eq(input.swap(input.swap(b, true), true), b, b .. " round trip") end
 
--- quit needs SELECT and START together; START alone must NOT quit
-eq(input.quit_combo(true, true), true, "both")
-eq(input.quit_combo(true, false), false, "start alone")
-eq(input.quit_combo(false, true), false, "select alone")
-eq(input.quit_combo(false, false), false, "none")
+-- Andromeda's primary quit shortcut is MENU (SDL guide) + START.
+eq(input.quit_combo(true, false, true), true, "menu + start")
+-- Keep SELECT + START as a compatibility fallback.
+eq(input.quit_combo(true, true, false), true, "select + start")
+eq(input.quit_combo(true, false, false), false, "start alone")
+eq(input.quit_combo(false, true, true), false, "menu/select alone")
+eq(input.quit_combo(false, false, false), false, "none")
+
+-- L2/R2 trigger axes behave like L1/R1, once per press.
+local mapped, down = input.trigger_button("triggerleft", 0.8, false)
+eq(mapped, "l", "L2 press"); eq(down, true, "L2 held")
+mapped, down = input.trigger_button("triggerleft", 0.9, true)
+eq(mapped, nil, "L2 hold does not repeat"); eq(down, true, "L2 remains held")
+mapped, down = input.trigger_button("triggerleft", 0.1, true)
+eq(mapped, nil, "L2 release"); eq(down, false, "L2 released")
+mapped, down = input.trigger_button("triggerright", 0.8, false)
+eq(mapped, "r", "R2 press"); eq(down, true, "R2 held")
+mapped, down = input.trigger_button("unknown", 1.0, false)
+eq(mapped, nil, "unknown axis"); eq(down, nil, "unknown axis state")
 eq(input.PADMAP.start, nil, "start has no other meaning"); eq(input.PADMAP.back, nil, "select has no other meaning")
 print("input tests passed")
