@@ -384,11 +384,26 @@ function love.keypressed(key)
 end
 
 function love.gamepadpressed(joy, b)
-  if b == "start" or b == "back" then
-    if input.quit_combo(joy:isGamepadDown("start"), joy:isGamepadDown("back")) then love.event.quit() end
+  -- muOS Andromeda exposes MENU as SDL's "guide" button.
+  -- SELECT+START remains a compatibility fallback for older layouts.
+  if b == "start" or b == "back" or b == "guide" then
+    if input.quit_combo(
+      joy:isGamepadDown("start"),
+      joy:isGamepadDown("back"),
+      joy:isGamepadDown("guide")
+    ) then love.event.quit() end
     return
   end
   if PADMAP[b] then button(PADMAP[b]) end
+end
+
+-- L2/R2 are SDL trigger axes rather than ordinary gamepad buttons.
+-- Convert a threshold crossing to one press so holding a trigger does not repeat tab changes.
+local triggerDown = { triggerleft = false, triggerright = false }
+function love.gamepadaxis(joy, axis, value)
+  local mapped, down = input.trigger_button(axis, value, triggerDown[axis])
+  if down ~= nil then triggerDown[axis] = down end
+  if mapped then button(mapped) end
 end
 
 local held = { dir = nil, t = 0 }
@@ -486,12 +501,12 @@ local function draw_footer()
 end
 
 local function row_height(r)
-  if r.kind == "hero" then return 104 end
-  if r.kind == "header" then return 28 end
-  if r.kind == "pin" then return 56 end
-  if r.kind == "peer" then return 50 end
-  if r.kind == "toggle" then return 46 end
-  return 38
+  if r.kind == "hero" then return 112 end
+  if r.kind == "header" then return 32 end
+  if r.kind == "pin" then return 62 end
+  if r.kind == "peer" then return 58 end
+  if r.kind == "toggle" then return 54 end
+  return 44
 end
 
 local function draw_row(r, x, y, w, on, t)
@@ -611,7 +626,7 @@ local function draw_content()
         end
       end
     end
-    text("Scan to open the panel", W - 178, TOP + 160, "tiny", t.muted, 164, "center")
+    text(fit("Scan to open the panel", "small", 150), W - 171, TOP + 160, "small", t.muted, 150, "center")
   end
   if S.tab == 2 and S.pingResult then text(fit(S.pingResult, "small", W - 28), 14, BOTTOM + 2, "small", t.primaryText) end
 end
@@ -670,7 +685,7 @@ local function draw_login()
   text("Scan with your phone", ox, 132, "strong", t.text)
   text("or open this address:", ox, 154, "small", t.muted)
   local y = 180
-  for _, l in ipairs(model.wrap(url, 24)) do text(l, ox, y, "small", t.primaryText); y = y + 18 end
+  for _, l in ipairs(model.wrap(url, 24)) do text(l, ox, y, "small", t.primaryText); y = y + 20 end
   text("This closes by itself once you are connected.", ox, y + 14, "small", t.muted, W - ox - 56)
 end
 
@@ -703,7 +718,7 @@ local function draw_sheet()
     { { btn = "B", glyph = "back" }, "Back, close, cancel" },
     { { btn = "X", glyph = "exitnode" }, "Use the highlighted device as exit node" },
     { { btn = "Y", glyph = "refresh" }, "Refresh now" },
-    { { btn = "combo", glyph = "power" }, "Quit (hold both)" },
+    { { btn = "combo", glyph = "power" }, "Quit (MENU + START)" },
   }
   local y = 84
   for _, it in ipairs(items) do
@@ -760,7 +775,7 @@ local function demo_steps(real)
       S.theme = "light"
       S.tab = 5
       S.view = { title = "Diagnostics", scroll = 0, lines = {
-        "Rt:Tailscale-M 0.1.0", "muOS Andromeda", "[ OK ] tailscale binaries present", "[ OK ] python3 present (web panel)",
+        "Rt:Tailscale-M 0.2.0", "muOS Andromeda", "[ OK ] tailscale binaries present", "[ OK ] python3 present (web panel)",
         "[ OK ] /dev/net/tun present (TUN mode)", "[ OK ] start at boot: init script installed", "[ OK ] tailscaled running",
         "[ OK ] web panel running", "[ OK ] watchdog running" } }
     end },
@@ -787,13 +802,13 @@ end
 function love.load()
   lg.setDefaultFilter("linear", "linear")
   canvas = lg.newCanvas(W, H)
-  F.tiny = lg.newFont("fonts/Inter-Regular.otf", 11)
-  F.small = lg.newFont("fonts/Inter-Regular.otf", 12)
-  F.body = lg.newFont("fonts/Inter-Regular.otf", 14)
-  F.strong = lg.newFont("fonts/Inter-SemiBold.otf", 14)
-  F.title = lg.newFont("fonts/Inter-SemiBold.otf", 19)
-  F.big = lg.newFont("fonts/Inter-SemiBold.otf", 24)
-  F.btn = lg.newFont("fonts/Inter-SemiBold.otf", 11)
+  F.tiny = lg.newFont("fonts/Inter-Regular.otf", 14)
+  F.small = lg.newFont("fonts/Inter-Regular.otf", 16)
+  F.body = lg.newFont("fonts/Inter-Regular.otf", 18)
+  F.strong = lg.newFont("fonts/Inter-SemiBold.otf", 18)
+  F.title = lg.newFont("fonts/Inter-SemiBold.otf", 23)
+  F.big = lg.newFont("fonts/Inter-SemiBold.otf", 30)
+  F.btn = lg.newFont("fonts/Inter-SemiBold.otf", 13)
 
   FAKE = os.getenv("RTTS_FAKE_DIR")
   if FAKE == "" then FAKE = nil end
