@@ -14,7 +14,11 @@ step "Fuzz JSON parser" luajit tests/fuzz_json.lua
 step "i18n guard" sh tests/i18n_guard.sh
 step "QR encoder vs python-qrcode + OpenCV" python3 tests/test_qr.py
 if command -v love >/dev/null && command -v xvfb-run >/dev/null; then
-  step "UI renders all 12 screens" bash -c 'rm -rf /tmp/rtk-ui-test && mkdir -p /tmp/rtk-ui-test && if ! HOME=/tmp/rtk-ui-test timeout 30 xvfb-run -a env RTTS_FAKE_DIR="$PWD/tests/fixtures" RTTS_DEMO=/tmp/rtk-ui-test/s RT_RUN=/tmp/rtk-ui-test/run LIBGL_ALWAYS_SOFTWARE=1 love app/RtTailscale/game > /tmp/rtk-ui-test/love.log 2>&1; then cat /tmp/rtk-ui-test/love.log; find /tmp/rtk-ui-test -type f -name "love.log" -print -exec cat {} +; exit 1; fi; count=$(find /tmp/rtk-ui-test -maxdepth 1 -name "s-*.png" | wc -l); if [ "$count" != 12 ]; then cat /tmp/rtk-ui-test/love.log; find /tmp/rtk-ui-test -type f -name "love.log" -print -exec cat {} + ; echo "Expected 12 screenshots, got $count"; exit 1; fi'
+  if [ "${RTTS_SKIP_UI_SMOKE:-0}" = "1" ]; then
+    echo "SKIP: headless LÖVE screenshot smoke test disabled by RTTS_SKIP_UI_SMOKE=1"
+  else
+    step "UI renders all 12 screens" bash -c 'rm -rf /tmp/rtk-ui-test && mkdir -p /tmp/rtk-ui-test && if ! HOME=/tmp/rtk-ui-test timeout 30 xvfb-run -a env RTTS_FAKE_DIR="$PWD/tests/fixtures" RTTS_DEMO=/tmp/rtk-ui-test/s RT_RUN=/tmp/rtk-ui-test/run LIBGL_ALWAYS_SOFTWARE=1 love app/RtTailscale/game > /tmp/rtk-ui-test/love.log 2>&1; then cat /tmp/rtk-ui-test/love.log; find /tmp/rtk-ui-test -type f -name "love.log" -print -exec cat {} +; exit 1; fi; count=$(find /tmp/rtk-ui-test -maxdepth 1 -name "s-*.png" | wc -l); if [ "$count" != 12 ]; then cat /tmp/rtk-ui-test/love.log; find /tmp/rtk-ui-test -type f -name "love.log" -print -exec cat {} + ; echo "Expected 12 screenshots, got $count"; exit 1; fi'
+  fi
 else echo; echo "(UI render test skipped: needs love + xvfb-run)"; fi
 if [ -n "${RT_BIN_DIR:-}" ]; then step "integration (qemu)" tests/run_integration.sh
 else echo; echo "(integration test skipped: set RT_BIN_DIR to run it)"; fi
