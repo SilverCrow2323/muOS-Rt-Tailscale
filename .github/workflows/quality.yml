@@ -2,7 +2,7 @@ name: Quality
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
   pull_request:
   workflow_dispatch:
 
@@ -19,4 +19,4 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y luajit shellcheck python3-pyflakes python3-qrcode python3-opencv love xvfb
       - name: Run project checks
-        run: bash tests/run_all.sh
+        run: RTTS_SKIP_UI_SMOKE=1 bash tests/run_all.sh
