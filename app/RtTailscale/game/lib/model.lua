@@ -1,13 +1,22 @@
--- Parsing of what the Tailscale CLI / rt print, kept free of any LÖVE API so it can be
--- unit-tested with plain LuaJIT (tests/test_model.lua).
+-- Defensive parsing of Tailscale CLI output; kept free of LÖVE APIs for LuaJIT tests.
 local json = require("lib.json")
-
 local M = {}
 
---- Parse `rt summary` (key=value lines) into a table of strings.
+local function decode_table(text)
+  if type(text) ~= "string" then return nil end
+  local ok, value = pcall(json.decode, text)
+  if not ok or type(value) ~= "table" then return nil end
+  return value
+end
+
+local function table_or_empty(value)
+  return type(value) == "table" and value or {}
+end
+
 function M.parse_summary(text)
   local t = {}
-  for line in (text or ""):gmatch("[^\r\n]+") do
+  if type(text) ~= "string" then return t end
+  for line in text:gmatch("[^\r\n]+") do
     local k, v = line:match("^([%w_]+)=(.*)$")
     if k then t[k] = v end
   end
@@ -16,35 +25,40 @@ end
 
 local function is_true(v) return v == true end
 
---- Parse `tailscale status --json`.
--- Returns { state, authUrl, version, tailnet, magic, health={}, self={}, peers={}, exitNode }
 function M.parse_status(text)
-  local d = json.decode(text)
-  if type(d) ~= "table" then return nil end
+  local d = decode_table(text)
+  if not d then return nil end
+  local current = table_or_empty(d.CurrentTailnet)
+  local self_data = table_or_empty(d.Self)
   local s = {
-    state = d.BackendState or "Unknown",
+    state = type(d.BackendState) == "string" and d.BackendState or "Unknown",
     authUrl = (type(d.AuthURL) == "string" and d.AuthURL ~= "") and d.AuthURL or nil,
-    version = d.Version,
-    tailnet = d.CurrentTailnet and d.CurrentTailnet.Name or nil,
-    magic = d.MagicDNSSuffix,
-    health = d.Health or {},
+    version = type(d.Version) == "string" and d.Version or nil,
+    tailnet = type(current.Name) == "string" and current.Name or nil,
+    magic = type(d.MagicDNSSuffix) == "string" and d.MagicDNSSuffix or nil,
+    health = table_or_empty(d.Health),
     peers = {},
   }
-  local me = d.Self
-  if type(me) == "table" then
+  if next(self_data) ~= nil then
     s.self = {
-      name = me.HostName, dns = me.DNSName, ips = me.TailscaleIPs or {}, os = me.OS,
-      online = is_true(me.Online), exitOption = is_true(me.ExitNodeOption),
+      name = self_data.HostName, dns = self_data.DNSName,
+      ips = table_or_empty(self_data.TailscaleIPs), os = self_data.OS,
+      online = is_true(self_data.Online), exitOption = is_true(self_data.ExitNodeOption),
     }
+  else
+    s.self = {}
   end
-  for _, p in pairs(d.Peer or {}) do
-    local peer = {
-      name = p.HostName or "?", dns = p.DNSName, ips = p.TailscaleIPs or {}, os = p.OS or "",
-      online = is_true(p.Online), exit = is_true(p.ExitNode), exitOption = is_true(p.ExitNodeOption),
-      lastSeen = p.LastSeen, relay = p.Relay, cur = p.CurAddr,
-    }
-    s.peers[#s.peers + 1] = peer
-    if peer.exit then s.exitNode = peer end
+  for _, p in pairs(table_or_empty(d.Peer)) do
+    if type(p) == "table" then
+      local peer = {
+        name = type(p.HostName) == "string" and p.HostName or "?",
+        dns = p.DNSName, ips = table_or_empty(p.TailscaleIPs), os = p.OS or "",
+        online = is_true(p.Online), exit = is_true(p.ExitNode), exitOption = is_true(p.ExitNodeOption),
+        lastSeen = p.LastSeen, relay = p.Relay, cur = p.CurAddr,
+      }
+      s.peers[#s.peers + 1] = peer
+      if peer.exit then s.exitNode = peer end
+    end
   end
   table.sort(s.peers, function(a, b)
     if a.online ~= b.online then return a.online end
@@ -53,33 +67,37 @@ function M.parse_status(text)
   return s
 end
 
---- Parse `tailscale debug prefs`.
 function M.parse_prefs(text)
-  local d = json.decode(text)
-  if type(d) ~= "table" then return nil end
+  local d = decode_table(text)
+  if not d then return nil end
   local adv_exit = false
-  for _, r in ipairs(d.AdvertiseRoutes or {}) do
-    if r == "0.0.0.0/0" or r == "::/0" then adv_exit = true end
+  for _, route in ipairs(table_or_empty(d.AdvertiseRoutes)) do
+    if route == "0.0.0.0/0" or route == "::/0" then adv_exit = true end
   end
   return {
     acceptRoutes = is_true(d.RouteAll), acceptDns = is_true(d.CorpDNS), shieldsUp = is_true(d.ShieldsUp),
     ssh = is_true(d.RunSSH), webclient = is_true(d.RunWebClient), advertiseExit = adv_exit,
-    hostname = d.Hostname or "", wantRunning = is_true(d.WantRunning), controlUrl = d.ControlURL or "",
+    hostname = type(d.Hostname) == "string" and d.Hostname or "",
+    wantRunning = is_true(d.WantRunning),
+    controlUrl = type(d.ControlURL) == "string" and d.ControlURL or "",
   }
 end
 
---- Pick the URLs printed by `rt urls` ("LAN http://..." / "TS  http://...").
 function M.parse_urls(text)
   local list = {}
-  for line in (text or ""):gmatch("[^\r\n]+") do
+  if type(text) ~= "string" then return list end
+  for line in text:gmatch("[^\r\n]+") do
     local kind, url = line:match("^(%u+)%s+(https?://%S+)")
     if kind then list[#list + 1] = { kind = kind, url = url } end
   end
   return list
 end
 
---- Word-wrap `s` to lines of at most `n` characters (also breaks long tokens such as URLs).
 function M.wrap(s, n)
+  s = type(s) == "string" and s or tostring(s or "")
+  n = tonumber(n) or 1
+  n = math.floor(n)
+  if n < 1 then n = 1 end
   local out = {}
   for para in (s .. "\n"):gmatch("(.-)\n") do
     local line = ""
