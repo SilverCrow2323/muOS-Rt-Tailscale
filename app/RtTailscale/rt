@@ -55,6 +55,7 @@ HTTP_PROXY=
 TS_EXTRA=
 WIFI_WAIT=120
 CFG
+	chmod 600 "$CONF" 2>/dev/null || return 1
 }
 CONF_DEFAULTS
 
@@ -67,7 +68,9 @@ CONF_SET() {
 	touch "$CONF"
 	grep -v "^$1=" "$CONF" >"$CONF.tmp" 2>/dev/null
 	printf '%s=%s\n' "$1" "$2" >>"$CONF.tmp"
+	chmod 600 "$CONF.tmp" 2>/dev/null || return 1
 	mv "$CONF.tmp" "$CONF"
+	chmod 600 "$CONF" 2>/dev/null || return 1
 }
 
 LOGLINE() {
