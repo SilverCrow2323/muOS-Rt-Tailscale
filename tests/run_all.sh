@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.." || exit 1
 rc=0
 step() { echo; echo "### $1"; shift; "$@" || { echo ">>> FAILED: $*"; rc=1; }; }
 
+step "config file permissions" sh tests/test_config_permissions.sh
 step "shellcheck (POSIX sh)"  shellcheck -s sh app/RtTailscale/rt app/RtTailscale/watchdog app/RtTailscale/ts
 step "shellcheck (launcher)"  shellcheck -s sh app/RtTailscale/mux_launch.sh
 step "python (panel) lint"    python3 -m pyflakes app/RtTailscale/panel/server.py
